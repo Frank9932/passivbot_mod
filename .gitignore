@@ -1,0 +1,13 @@
+.python-version
+__pycache__/
+api-keys.json
+caches/
+notebook.ipynb
+rec/
+venv_fg_mod_610/
+venv_frager_mod/
+wallet/
+fetch_symbols.py
+forager_live_c.svg
+forager_ohs.py
+forager_sample.py
