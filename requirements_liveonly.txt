@@ -1,3 +1,6 @@
+oracledb==2.0.0
+requests==2.31.0
+
 websockets==10.1
 aiohttp==3.8.1
 numpy==1.21.5

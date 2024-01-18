@@ -3,9 +3,9 @@
  user: binance_00
  twe_long: 0.8
  twe_short: 0.8
- n_longs: 20 
- n_shorts: 20 
- max_min_cost: 10.0
+ n_longs: 40 
+ n_shorts: 10 
+ max_min_cost: 5.0
  n_ohlcvs: 100
  ohlcv_interval: 1h
  leverage: 10
@@ -39,9 +39,7 @@
  ]
  
  // if approved_symbols_short is empty, all symbols are approved for shorts
- approved_symbols_short: [
- 
- ]
+ approved_symbols_short: []
  
  // Specify directory containing live configs.
  // They are sorted alphabetically, then the first config whose filename includes symbol is selected.

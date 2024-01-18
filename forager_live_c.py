@@ -22,6 +22,40 @@ from procedures import load_exchange_key_secret_passphrase, utc_ms, make_get_fil
 from njit_funcs import calc_emas
 from pure_funcs import determine_pos_side_ccxt, date_to_ts2
 
+""" -----------------------------------------"""
+import requests
+import oracledb
+
+def send_msg(msg):
+    token = "1582443382:AAGZHjDtgK5R1hNdcWXviBjQ1ihXaoIW4FE" 
+    chat_id = "-911547716" 
+    r = requests.post(f'https://api.telegram.org/bot{token}/sendMessage', json={"chat_id": chat_id, "text": msg})
+    # print(r.json())
+
+def get_new_symList():
+    table_name = "binancefutures2309"
+    connection = oracledb.connect(
+        config_dir=r"wallet",
+        user="ADMIN",
+        password="3FhlI7gg99qOZl4i",
+        dsn="a247k8swn2929rtw_low",
+        wallet_location=r"wallet",
+        wallet_password="3FhlI7gg99qOZl4i"
+    )
+    cursor = connection.cursor()
+    
+    query = f"SELECT symList FROM {table_name} ORDER BY ut DESC FETCH FIRST 1 ROW ONLY"
+    cursor.execute(query)
+    symList_result = cursor.fetchone()  
+    cursor.close()
+    connection.close()
+
+    if symList_result:
+        new_symList = symList_result[0]
+        return new_symList
+    else:
+        return None 
+#-----------------------------------------
 
 def score_func_old(ohlcv):
     highs = np.array(ohlcv)[:, 2]
@@ -67,6 +101,8 @@ def calc_volume_sum(ohlcv):
 
 
 def sort_symbols(ohlcvs, config):
+    
+    # min n syms 
     min_n_syms = max(config["n_longs"], config["n_shorts"])
     print("min_n_syms", min_n_syms)
     filtered_syms = list(ohlcvs)
@@ -79,6 +115,7 @@ def sort_symbols(ohlcvs, config):
         if config[f"{title}_clip_threshold"] == 0.0:
             continue
         by_func = sorted([(func(ohlcvs[sym]), sym) for sym in filtered_syms], reverse=higher_is_better)
+    
         print(f"sorted by {title} {'high to low' if higher_is_better else 'low to high'} n syms: {len(by_func)}")
         for elm in by_func:
             print(elm)
@@ -348,8 +385,14 @@ async def get_min_costs_and_contract_multipliers(cc):
                     c_mults[symbol] = c_mult
     return min_costs, c_mults
 
-
-async def dump_yaml(cc, config):
+""" async def get_min_costs_and_contract_multipliers(cc):
+          min_costs =[]
+          c_mults = []
+          return min_costs, c_mults
+ """
+# async def dump_yaml(cc, config):---------------------------------------------------------
+async def dump_yaml(cc, config, sorted_syms):
+    # mincost
     max_min_cost = config["max_min_cost"]
     print("getting min costs...")
     min_costs, c_mults = await get_min_costs_and_contract_multipliers(cc)
@@ -391,57 +434,71 @@ async def dump_yaml(cc, config):
                     approved = new_approved
             except:
                 pass
+    
     approved = sorted(set(approved) - set(config["symbols_to_ignore"]))
-    if (config["approved_symbols_long"] or config["n_longs"] == 0) and (
-        config["approved_symbols_short"] or config["n_shorts"] == 0
-    ):
+    
+    if (config["approved_symbols_long"] or config["n_longs"] == 0) and (config["approved_symbols_short"] or config["n_shorts"] == 0):
         approved = set(approved) & (set(config["approved_symbols_long"]) | set(config["approved_symbols_short"]))
 
-    # print("getting current bots...")
-    # (
-    #     current_positions_long,
-    #     current_positions_short,
-    #     current_open_orders_long,
-    #     current_open_orders_short,
-    # ) = await get_current_symbols(cc)
+    print("getting current bots...")
+    (
+        current_positions_long,
+        current_positions_short,
+        current_open_orders_long,
+        current_open_orders_short,
+    ) = await get_current_symbols(cc)
 
-    # current_positions_long = [symbols_map[s] if s in symbols_map else s for s in current_positions_long]
-    # current_positions_short = [symbols_map[s] if s in symbols_map else s for s in current_positions_short]
-    # current_open_orders_long = [symbols_map[s] if s in symbols_map else s for s in current_open_orders_long]
-    # current_open_orders_short = [symbols_map[s] if s in symbols_map else s for s in current_open_orders_short]
+    current_positions_long = [symbols_map[s] if s in symbols_map else s for s in current_positions_long]
+    current_positions_short = [symbols_map[s] if s in symbols_map else s for s in current_positions_short]
+    current_open_orders_long = [symbols_map[s] if s in symbols_map else s for s in current_open_orders_long]
+    current_open_orders_short = [symbols_map[s] if s in symbols_map else s for s in current_open_orders_short]
 
-    # current_positions_long = sorted(set(current_positions_long) - set(config["symbols_to_ignore"]))
-    # current_positions_short = sorted(set(current_positions_short) - set(config["symbols_to_ignore"]))
-    # current_open_orders_long = sorted(set(current_open_orders_long) - set(config["symbols_to_ignore"]))
-    # current_open_orders_short = sorted(set(current_open_orders_short) - set(config["symbols_to_ignore"]))
+    current_positions_long = sorted(set(current_positions_long) - set(config["symbols_to_ignore"]))
+    current_positions_short = sorted(set(current_positions_short) - set(config["symbols_to_ignore"]))
+    current_open_orders_long = sorted(set(current_open_orders_long) - set(config["symbols_to_ignore"]))
+    current_open_orders_short = sorted(set(current_open_orders_short) - set(config["symbols_to_ignore"]))
 
-    # print("ignoring symbols:", config["symbols_to_ignore"])
-    # print("current_positions_long", sorted(current_positions_long))
-    # print("current_positions_short", sorted(current_positions_short))
-    # print("current_open_orders long", sorted(current_open_orders_long))
-    # print("current_open_orders short", sorted(current_open_orders_short))
-    print("getting ohlcvs...")
-    ohs = await get_ohlcvs(cc, [symbols_map_inv[sym] for sym in approved], config)
-    max_len_ohlcv = max([len(ohs[s]) for s in ohs])
-    print("max_len_ohlcv", max_len_ohlcv)
-    ohs = {symbols_map[k]: v for k, v in ohs.items() if len(v) == max_len_ohlcv}
-    for sym in ohs:
-        for i in range(len(ohs[sym])):
-            ohs[sym][i][5] *= c_mults[symbols_map_inv[sym]]
-    sorted_syms = sort_symbols(ohs, config)  # sorted best to worst
+    print("ignoring symbols:", config["symbols_to_ignore"])
+    print("current_positions_long", sorted(current_positions_long))
+    print("current_positions_short", sorted(current_positions_short))
+    print("current_open_orders long", sorted(current_open_orders_long))
+    print("current_open_orders short", sorted(current_open_orders_short))
+    
+    # print("getting ohlcvs...")
+    
+    # ohs = await get_ohlcvs(cc, [symbols_map_inv[sym] for sym in approved], config)
+    # max_len_ohlcv = max([len(ohs[s]) for s in ohs])
+    # print("max_len_ohlcv", max_len_ohlcv)
+    # ohs = {symbols_map[k]: v for k, v in ohs.items() if len(v) == max_len_ohlcv}
+    # for sym in ohs:
+    #     for i in range(len(ohs[sym])):
+    #         ohs[sym][i][5] *= c_mults[symbols_map_inv[sym]]
+    
+    # sorted_syms    
+    # sorted_syms = sort_symbols(ohs, config)  # sorted best to worst
+
+    # def get_sorted_syms():
+    #     with open('sorted_symbols.py', 'r') as f:
+    #         return eval(f.readline())
+    #---------------------------------------------------------------- 
+
+    sorted_syms = eval(sorted_syms)
+    # print(sorted_syms)
     print(f"generating yaml {config['yaml_filepath']}...")
+
     yaml = generate_yaml(
         sorted_syms,
         config,
-        # current_positions_long,
-        # current_positions_short,
-        # current_open_orders_long,
-        # current_open_orders_short,
+        current_positions_long,
+        current_positions_short,
+        current_open_orders_long,
+        current_open_orders_short,
     )
-    # with open(config["yaml_filepath"], "w") as f:
-    with open("yaml_filepath", "w") as f:
-        f.write(yaml)
 
+    # with open(config["yaml_filepath"], "w") as f:
+    with open("yaml_filepath_live", "w") as f:
+        f.write(yaml)
+# -------------------------------------------------------------
 
 async def main():
     exchange_map = {
@@ -504,38 +561,46 @@ async def main():
     exchange, key, secret, passphrase = load_exchange_key_secret_passphrase(config["user"])
     max_n_tries_per_hour = 5
     error_timestamps = []
+    sorted_syms = None
     while True:
-        try:
-            cc = getattr(ccxt, exchange_map[exchange])({"apiKey": key, "secret": secret, "password": passphrase})
-            await dump_yaml(cc, config)
-            print("waiting one minute to avoid API rate limiting...")
-            for i in range(60, -1, -1):
-                time.sleep(1)
-                print(f"\rcountdown: {i}    ", end=" ")
-            print()
-            # subprocess.run(["tmux", "kill-session", "-t", config["user"]])
-            # subprocess.run(["tmuxp", "load", "-d", config["yaml_filepath"]])
-            if args.no_loop:
-                return
-            for i in range(config["update_interval_minutes"] * 60, -1, -1):
-                time.sleep(1)
-                print(f"\rcountdown: {i}    ", end=" ")
-            print()
-        except Exception as e:
-            traceback.print_exc()
-            sleep_mins = 2
-            print(f"error with forager {e} waiting {sleep_mins} minutes and trying again")
-            for i in range(60 * sleep_mins, -1, -1):
-                time.sleep(1)
-                print(f"\rcountdown: {i}    ", end=" ")
-            now = time.time()
-            error_timestamps.append(now)
-            error_timestamps = [x for x in error_timestamps if x > now - 60 * 60]
-            if len(error_timestamps) > max_n_tries_per_hour:
-                print(f"failed {max_n_tries_per_hour} times last hour; exiting")
-                return
-        finally:
-            await cc.close()
+        fetched_syms = get_new_symList()
+        if sorted_syms != fetched_syms :
+            sorted_syms = fetched_syms
+            send_msg(f"new list! \n{sorted_syms}")
+            print(f"new list! \n{sorted_syms}")
+            try:
+                cc = getattr(ccxt, exchange_map[exchange])({"apiKey": key, "secret": secret, "password": passphrase})
+                await dump_yaml(cc, config, sorted_syms)
+                # print("waiting one minute to avoid API rate limiting...")
+                # for i in range(60, -1, -1):
+                    # time.sleep(1)
+                    # print(f"\rcountdown: {i}    ", end=" ")
+                print("process tmuxp")
+                # subprocess.run(["tmux", "kill-session", "-t", config["user"]])
+                # subprocess.run(["tmuxp", "load", "-d", config["yaml_filepath"]])
+                if args.no_loop:
+                    return
+            except Exception as e:
+                traceback.print_exc()
+                sleep_mins = 2
+                print(f"error with forager {e} waiting {sleep_mins} minutes and trying again")
+                for i in range(60 * sleep_mins, -1, -1):
+                    time.sleep(1)
+                    print(f"\rcountdown: {i}    ", end=" ")
+                now = time.time()
+                error_timestamps.append(now)
+                error_timestamps = [x for x in error_timestamps if x > now - 60 * 60]
+                if len(error_timestamps) > max_n_tries_per_hour:
+                    print(f"failed {max_n_tries_per_hour} times last hour; exiting")
+                    return
+            finally:
+                await cc.close()
+        else:
+            # for i in range(config["update_interval_minutes"] * 30, -1, -1):
+            send_msg(f"No update...")
+        for i in range(1500, -1, -1):
+            time.sleep(1)
+            print(f"\rcountdown: {i}    ", end=" ")
 
 
 if __name__ == "__main__":
